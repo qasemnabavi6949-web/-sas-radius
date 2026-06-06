@@ -1,0 +1,788 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Search, Plus, Filter, X, Edit2, Trash2, Gift, User, Mail, Network, CreditCard, Package, Settings, UserX, UserCheck, RefreshCw } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const DynamicAdminTrafficChart = dynamic(() => import('../AdminTrafficChart'), { ssr: false });
+
+const dummyTrafficData = [
+  { time: 'Mon', in: 10, out: 5 },
+  { time: 'Tue', in: 25, out: 12 },
+  { time: 'Wed', in: 15, out: 8 },
+  { time: 'Thu', in: 40, out: 20 },
+  { time: 'Fri', in: 60, out: 30 },
+  { time: 'Sat', in: 80, out: 45 },
+  { time: 'Sun', in: 30, out: 15 },
+];
+
+export default function UserList() {
+  const [users, setUsers] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [manageTab, setManageTab] = useState<'details' | 'plan' | 'gift' | 'usage'>('details');
+  
+  // Selection and Context Menu
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, user: any } | null>(null);
+
+  // Form states for managing user
+  const [editUsername, setEditUsername] = useState('');
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editStaticIp, setEditStaticIp] = useState('');
+  const [giftTraffic, setGiftTraffic] = useState('');
+  const [chargeAmount, setChargeAmount] = useState('');
+  const [selectedNewPlan, setSelectedNewPlan] = useState('');
+
+  // Fetch users and profiles on mount
+  useEffect(() => {
+    fetchUsers();
+    fetchProfiles();
+  }, []);
+
+  const fetchProfiles = async () => {
+    try {
+      const res = await fetch('/api/profiles');
+      if (res.ok) {
+        setProfiles(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+      }
+    } catch (error) {
+      console.error("Error fetching users", error);
+    }
+  };
+
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent, user: any) => {
+    e.preventDefault();
+    if (!selectedIds.includes(user.id)) {
+      setSelectedIds([user.id]);
+    }
+    setContextMenu({
+      visible: true,
+      x: e.pageX,
+      y: e.pageY,
+      user
+    });
+  };
+
+  const toggleSelection = (id: number) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(selectedId => selectedId !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  const toggleAllSelection = () => {
+    if (selectedIds.length === users.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(users.map(u => u.id));
+    }
+  };
+
+  const handleOpenManage = (user: any, defaultTab: 'details' | 'plan' | 'gift' | 'usage' = 'details') => {
+    setSelectedUser(user);
+    setEditUsername(user.username);
+    setEditFirstName(user.firstName || '');
+    setEditLastName(user.lastName || '');
+    setEditEmail(user.email || '');
+    setEditPhone(user.phone || '');
+    setEditPassword(user.password || '');
+    setEditStaticIp(user.staticIp || '');
+    setSelectedNewPlan(user.group);
+    setGiftTraffic('');
+    setChargeAmount('');
+    setManageTab(defaultTab);
+    setIsManageModalOpen(true);
+    setContextMenu(null);
+  };
+
+  const handleDisconnectUser = async (userToDisconnect?: any) => {
+    const targetUser = userToDisconnect || selectedUser;
+    if (targetUser) {
+      try {
+        await fetch(`/api/users/${targetUser.username}/disconnect`, { method: 'POST' });
+        fetchUsers();
+      } catch (err) {
+        console.error("Failed to disconnect user", err);
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const handleToggleStatus = async (userToToggle?: any) => {
+    const targetUser = userToToggle || selectedUser;
+    if (targetUser) {
+      const newStatus = targetUser.status === 'Disabled' ? 'Active' : 'Disabled';
+      try {
+        const res = await fetch(`/api/users/${targetUser.username}/status`, { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (res.ok) fetchUsers();
+      } catch (err) {
+        console.error("Failed to change user status", err);
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const handleChargeUser = async (userToCharge?: any) => {
+    const targetUser = userToCharge || selectedUser;
+    if (targetUser && confirm(`Are you sure you want to recharge traffic for ${targetUser.username}?`)) {
+      try {
+        const res = await fetch(`/api/users/${targetUser.username}/charge`, { method: 'POST' });
+        if (res.ok) fetchUsers();
+      } catch (err) {
+        console.error("Failed to charge user", err);
+      }
+    }
+    setContextMenu(null);
+  };
+
+  const handleDeleteUser = async (userToDelete?: any) => {
+    const targetUser = userToDelete || selectedUser;
+    if (targetUser) {
+      try {
+        await fetch(`/api/users/${targetUser.username}`, { method: 'DELETE' });
+        fetchUsers();
+        setSelectedIds(selectedIds.filter(id => id !== targetUser.id));
+      } catch (err) {
+        console.error("Failed to delete user", err);
+      }
+    }
+    setIsManageModalOpen(false);
+    setContextMenu(null);
+  };
+
+  const handleDeleteSelected = async () => {
+    const selectedUsers = users.filter(u => selectedIds.includes(u.id));
+    for (const user of selectedUsers) {
+      try {
+        await fetch(`/api/users/${user.username}`, { method: 'DELETE' });
+      } catch (e) {
+        console.error("Failed to delete", user.username, e);
+      }
+    }
+    fetchUsers();
+    setSelectedIds([]);
+    setContextMenu(null);
+  };
+
+  const handleSaveUser = async () => {
+    let newTraffic = selectedUser.traffic;
+    if (giftTraffic) {
+      newTraffic = `${selectedUser.traffic.split(' / ')[0]} / ${parseInt(selectedUser.traffic.split(' / ')[1]) + parseInt(giftTraffic)} GB (Gifted)`;
+    }
+    let newBalance = selectedUser.balance;
+    if (chargeAmount) {
+      const currentBalance = parseInt(selectedUser.balance.replace(' ؋', '')) || 0;
+      newBalance = `${currentBalance + parseInt(chargeAmount)}`;
+    }
+    
+    try {
+      await fetch(`/api/users/${selectedUser.username}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: editFirstName,
+          lastName: editLastName,
+          email: editEmail,
+          phone: editPhone,
+          password: editPassword,
+          staticIp: editStaticIp,
+          group: selectedNewPlan,
+          traffic: newTraffic,
+          balance: newBalance
+        })
+      });
+      fetchUsers();
+    } catch (err) {
+      console.error("Error saving user", err);
+    }
+    setIsManageModalOpen(false);
+  };
+
+  return (
+    <div className="space-y-6 relative">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-100">User List</h1>
+          <p className="text-sm text-slate-400">Manage RADIUS users, view sessions, and edit plans.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <button 
+              onClick={handleDeleteSelected}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-red-500/10 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-900/50 transition-colors border border-red-500/20"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Selected ({selectedIds.length})
+            </button>
+          )}
+          <button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Add User
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-700 bg-slate-800 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-700 p-4">
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search username..."
+              className="h-9 w-full rounded-md border border-slate-700 bg-slate-900/60 pl-9 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <button className="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-700/50">
+            <Filter className="h-4 w-4 text-slate-400" />
+            Filters
+          </button>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-400">
+            <thead className="bg-slate-900/60 text-xs uppercase text-slate-400 border-b border-slate-700">
+              <tr>
+                <th className="px-6 py-3 font-medium w-10">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-600 text-blue-600 focus:ring-blue-500"
+                    checked={selectedIds.length === users.length && users.length > 0}
+                    onChange={toggleAllSelection}
+                  />
+                </th>
+                <th className="px-6 py-3 font-medium">Username</th>
+                <th className="px-6 py-3 font-medium">Full Name</th>
+                <th className="px-6 py-3 font-medium">Profile/Group</th>
+                <th className="px-6 py-3 font-medium">Status</th>
+                <th className="px-6 py-3 font-medium">Speed Limit</th>
+                <th className="px-6 py-3 font-medium">Traffic Usage</th>
+                <th className="px-6 py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700 bg-slate-800">
+              {users.map((user) => (
+                <tr 
+                  key={user.id} 
+                  className={`hover:bg-slate-700/50 transition-colors cursor-pointer ${selectedIds.includes(user.id) ? 'bg-blue-500/30' : ''}`} 
+                  onClick={() => toggleSelection(user.id)}
+                  onContextMenu={(e) => handleContextMenu(e, user)}
+                >
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-600 text-blue-600 focus:ring-blue-500"
+                      checked={selectedIds.includes(user.id)}
+                      onChange={() => toggleSelection(user.id)}
+                    />
+                  </td>
+                  <td className="px-6 py-4 font-medium text-slate-100">{user.username}</td>
+                  <td className="px-6 py-4">{user.firstName} {user.lastName}</td>
+                  <td className="px-6 py-4">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-slate-900/60 px-2 py-1 text-xs font-medium text-slate-300">
+                      <Package className="h-3 w-3" />
+                      {user.group}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      user.status === 'Online' ? 'bg-emerald-100 text-emerald-700' :
+                      user.status === 'Offline' ? 'bg-slate-900/60 text-slate-300' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {user.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-xs font-mono bg-slate-900/50 px-2 py-1 rounded text-slate-300">
+                      {user.speedLimit || 'Unlimited'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 font-mono text-xs">{user.traffic}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleOpenManage(user, 'details'); }}
+                      className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded-md hover:bg-blue-500/10"
+                      title="Edit User"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Context Menu */}
+      {contextMenu && contextMenu.visible && (
+        <div 
+          className="absolute z-50 w-48 rounded-md bg-slate-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="py-1">
+            <button
+              onClick={() => handleOpenManage(contextMenu.user, 'details')}
+              className="flex w-full items-center px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+            >
+              <Edit2 className="mr-3 h-4 w-4 text-slate-400" />
+              Edit Details
+            </button>
+            <button
+              onClick={() => handleToggleStatus(contextMenu.user)}
+              className="flex w-full items-center px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+            >
+              {contextMenu.user.status === 'Disabled' ? (
+                <>
+                  <UserCheck className="mr-3 h-4 w-4 text-green-400" />
+                  Enable Account
+                </>
+              ) : (
+                <>
+                  <UserX className="mr-3 h-4 w-4 text-orange-400" />
+                  Disable Account
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => handleChargeUser(contextMenu.user)}
+              className="flex w-full items-center px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+            >
+              <RefreshCw className="mr-3 h-4 w-4 text-blue-400" />
+              Recharge Package
+            </button>
+            <button
+              onClick={() => handleOpenManage(contextMenu.user, 'plan')}
+              className="flex w-full items-center px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+            >
+              <Package className="mr-3 h-4 w-4 text-slate-400" />
+              Change Plan
+            </button>
+            <button
+              onClick={() => handleOpenManage(contextMenu.user, 'gift')}
+              className="flex w-full items-center px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white"
+            >
+              <Gift className="mr-3 h-4 w-4 text-slate-400" />
+              Gift Traffic
+            </button>
+            <div className="border-t border-slate-800 my-1"></div>
+            {contextMenu.user.status === 'Online' && (
+              <button
+                onClick={() => handleDisconnectUser(contextMenu.user)}
+                className="flex w-full items-center px-4 py-2 text-sm text-orange-500 hover:bg-orange-500/10"
+              >
+                <Network className="mr-3 h-4 w-4 text-orange-500" />
+                Fix Ghost Session
+              </button>
+            )}
+            <button
+              onClick={() => handleDeleteUser(contextMenu.user)}
+              className="flex w-full items-center px-4 py-2 text-sm text-red-600 hover:bg-red-500/10"
+            >
+              <Trash2 className="mr-3 h-4 w-4 text-red-500" />
+              Delete User
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add User Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-slate-800 p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
+              <h2 className="text-lg font-bold text-slate-100">Add New User</h2>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-400">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-6">
+              {/* Account Info */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100 mb-3 flex items-center gap-2"><User className="h-4 w-4 text-blue-500" /> Account Details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Username *</label>
+                    <input id="add-username" type="text" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. new_user" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Password *</label>
+                    <input id="add-password" type="password" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="••••••••" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Profile / Plan *</label>
+                    <select id="add-plan" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                      {profiles.map(p => (
+                        <option key={p.id} value={p.name}>{p.name}</option>
+                      ))}
+                      {profiles.length === 0 && <option value="">No plans available</option>}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Personal Info */}
+              <div className="border-t border-slate-800 pt-4">
+                <h3 className="text-sm font-semibold text-slate-100 mb-3 flex items-center gap-2"><Mail className="h-4 w-4 text-blue-500" /> Personal Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">First Name</label>
+                    <input id="add-firstname" type="text" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. Ali" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Last Name</label>
+                    <input id="add-lastname" type="text" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="e.g. Rezaei" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Email Address</label>
+                    <input id="add-email" type="email" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="user@example.com" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Phone Number</label>
+                    <input id="add-phone" type="tel" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="0912..." />
+                  </div>
+                </div>
+              </div>
+
+              {/* Network Info */}
+              <div className="border-t border-slate-800 pt-4">
+                <h3 className="text-sm font-semibold text-slate-100 mb-3 flex items-center gap-2"><Network className="h-4 w-4 text-blue-500" /> Network & Limits</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Static IP Address (Optional)</label>
+                    <input id="add-ip" type="text" className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono" placeholder="e.g. 192.168.1.50" />
+                    <p className="text-xs text-slate-400 mt-1">Assign a fixed IP address to this user upon connection. Speed and Volume Limits will automatically inherit from the selected Plan.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+                <button onClick={() => setIsAddModalOpen(false)} className="rounded-md px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-700">Cancel</button>
+                <button onClick={async () => {
+                    const fallbackPlan = profiles.length > 0 ? profiles[0].name : '';
+                  const payload = {
+                    username: (document.getElementById('add-username') as HTMLInputElement)?.value || 'new_user',
+                    password: (document.getElementById('add-password') as HTMLInputElement)?.value || '123456',
+                    firstName: (document.getElementById('add-firstname') as HTMLInputElement)?.value || '',
+                    lastName: (document.getElementById('add-lastname') as HTMLInputElement)?.value || '',
+                    email: (document.getElementById('add-email') as HTMLInputElement)?.value || '',
+                    phone: (document.getElementById('add-phone') as HTMLInputElement)?.value || '',
+                    staticIp: (document.getElementById('add-ip') as HTMLInputElement)?.value || '',
+                    group: (document.getElementById('add-plan') as HTMLSelectElement)?.value || fallbackPlan
+                  };
+                  try {
+                    await fetch('/api/users', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify(payload)
+                    });
+                    fetchUsers();
+                  } catch (e) {
+                    console.error(e);
+                  }
+                  setIsAddModalOpen(false);
+                }} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create User</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage User Modal (Tabs: Details, Plan/Charge, Gift) */}
+      {isManageModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-slate-800 shadow-xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+              <h2 className="text-lg font-bold text-slate-100">Manage User: {selectedUser.username}</h2>
+              <button onClick={() => setIsManageModalOpen(false)} className="text-slate-400 hover:text-slate-400">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            {/* Tabs Header */}
+            <div className="flex border-b border-slate-700 px-6 overflow-x-auto">
+              <button
+                onClick={() => setManageTab('details')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  manageTab === 'details' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                <Settings className="h-4 w-4" /> Edit Details
+              </button>
+              <button
+                onClick={() => setManageTab('plan')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  manageTab === 'plan' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                <Package className="h-4 w-4" /> Change Plan & Charge
+              </button>
+              <button
+                onClick={() => setManageTab('gift')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  manageTab === 'gift' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                <Gift className="h-4 w-4" /> Gift Traffic
+              </button>
+              <button
+                onClick={() => setManageTab('usage')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  manageTab === 'usage' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                <Network className="h-4 w-4" /> Usage Graph
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              
+              {/* Tab Content: Details */}
+              {manageTab === 'details' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Username</label>
+                    <input 
+                      type="text" 
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">First Name</label>
+                    <input 
+                      type="text" 
+                      value={editFirstName}
+                      onChange={(e) => setEditFirstName(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Last Name</label>
+                    <input 
+                      type="text" 
+                      value={editLastName}
+                      onChange={(e) => setEditLastName(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Email Address</label>
+                    <input 
+                      type="email" 
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
+                    <input 
+                      type="text" 
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Phone Number</label>
+                    <input 
+                      type="tel" 
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Static IP Address</label>
+                    <input 
+                      type="text" 
+                      value={editStaticIp}
+                      onChange={(e) => setEditStaticIp(e.target.value)}
+                      className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono" 
+                      placeholder="e.g. 192.168.1.50"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Content: Plan & Charge */}
+              {manageTab === 'plan' && (
+                <div className="space-y-6">
+                  {/* Change Plan */}
+                  <div className="rounded-lg border border-slate-700 p-4">
+                    <h3 className="text-sm font-semibold text-slate-100 mb-3 flex items-center gap-2">
+                      <Package className="h-4 w-4 text-blue-500" /> Change Profile / Package
+                    </h3>
+                    <div className="flex flex-col sm:flex-row gap-4 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Current Plan: {selectedUser.group}</label>
+                        <select 
+                          value={selectedNewPlan}
+                          onChange={(e) => setSelectedNewPlan(e.target.value)}
+                          className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          {profiles.map(p => (
+                            <option key={p.id} value={p.name}>{p.name}</option>
+                          ))}
+                          {profiles.length === 0 && <option value="">No plans available</option>}
+                        </select>
+                      </div>
+                      <div className="w-full sm:w-auto">
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Action</label>
+                        <select className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                          <option>Change immediately</option>
+                          <option>Change on next billing cycle</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Charge Account */}
+                  <div className="rounded-lg border border-slate-700 p-4">
+                    <h3 className="text-sm font-semibold text-slate-100 mb-3 flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-emerald-500" /> Charge Account / Add Balance
+                    </h3>
+                    <div className="flex flex-col sm:flex-row gap-4 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Amount to Charge</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="number" 
+                            value={chargeAmount}
+                            onChange={(e) => setChargeAmount(e.target.value)}
+                            placeholder="Amount"
+                            className="w-full rounded-md border border-slate-600 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
+                          />
+                          <span className="inline-flex items-center px-3 rounded-md bg-slate-900/60 text-slate-300 text-sm font-medium border border-slate-700">AFN</span>
+                        </div>
+                      </div>
+                      <div className="w-full sm:w-auto">
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Current Balance</label>
+                        <div className="px-3 py-2 text-sm font-semibold text-slate-100 bg-slate-900/60 border border-slate-700 rounded-md">
+                          {selectedUser.balance}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Content: Gift Traffic */}
+              {manageTab === 'gift' && (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-500/10/50 p-5">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-900 mb-2">
+                      <Gift className="h-4 w-4 text-emerald-500" />
+                      Gift Internet Traffic
+                    </h3>
+                    <p className="text-sm text-emerald-700 mb-4">Add extra gigabytes to this user&apos;s current plan without charging them.</p>
+                    
+                    <div className="flex flex-col sm:flex-row gap-4 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-medium text-emerald-800 mb-1">Traffic Amount</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="number" 
+                            value={giftTraffic}
+                            onChange={(e) => setGiftTraffic(e.target.value)}
+                            placeholder="e.g. 5"
+                            className="w-full rounded-md border border-emerald-500/20 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
+                          />
+                          <span className="inline-flex items-center px-3 rounded-md bg-emerald-100 text-emerald-700 text-sm font-medium">GB</span>
+                        </div>
+                      </div>
+                      <div className="w-full sm:w-auto">
+                        <label className="block text-xs font-medium text-emerald-800 mb-1">Current Usage</label>
+                        <div className="px-3 py-2 text-sm font-mono text-emerald-900 bg-slate-800 border border-emerald-500/20 rounded-md">
+                          {selectedUser.traffic}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Content: Usage */}
+              {manageTab === 'usage' && (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-slate-700 p-4 bg-slate-900/40">
+                    <h3 className="text-sm font-semibold text-slate-100 mb-3 flex items-center gap-2">
+                      <Network className="h-4 w-4 text-blue-500" /> Traffic Usage
+                    </h3>
+                    <div className="h-[200px] w-full items-center justify-center rounded">
+                      <DynamicAdminTrafficChart data={dummyTrafficData} />
+                    </div>
+                    <div className="mt-4 flex gap-4">
+                      <div className="bg-slate-800 rounded p-3 flex-1 border border-slate-700">
+                         <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Usage</p>
+                         <p className="font-mono text-lg text-slate-100">{selectedUser.traffic.split(' / ')[0]}</p>
+                      </div>
+                      <div className="bg-slate-800 rounded p-3 flex-1 border border-slate-700">
+                         <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Data Limit</p>
+                         <p className="font-mono text-lg text-slate-100">{selectedUser.traffic.split(' / ')[1]}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer Actions */}
+            <div className="border-t border-slate-700 bg-slate-900/60 px-6 py-4 rounded-b-xl flex items-center justify-between">
+              <button 
+                onClick={() => handleDeleteUser()}
+                className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-500/10 transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete User
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setIsManageModalOpen(false)} className="rounded-md px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-600 transition-colors">Cancel</button>
+                <button onClick={handleSaveUser} className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">Save Changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

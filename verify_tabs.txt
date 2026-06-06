@@ -1,0 +1,51 @@
+x-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-700">Cancel</button>
+                <button onClick={async () => {
+                    const fallbackPlan = profiles.length > 0 ? profiles[0].name : '';
+                  const payload = {
+                    username: (document.getElementById('add-username') as HTMLInputElement)?.value || 'new_user',
+                    password: (document.getElementById('add-password') as HTMLInputElement)?.value || '123456',
+                    firstName: (document.getElementById('add-firstname') as HTMLInputElement)?.value || '',
+                    lastName: (document.getElementById('add-lastname') as HTMLInputElement)?.value || '',
+                    email: (document.getElementById('add-email') as HTMLInputElement)?.value || '',
+                    phone: (document.getElementById('add-phone') as HTMLInputElement)?.value || '',
+                    staticIp: (document.getElementById('add-ip') as HTMLInputElement)?.value || '',
+                    group: (document.getElementById('add-plan') as HTMLSelectElement)?.value || fallbackPlan
+                  };
+                  try {
+                    await fetch('/api/users', {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify(payload)
+                    });
+                    fetchUsers();
+                  } catch (e) {
+                    console.error(e);
+                  }
+                  setIsAddModalOpen(false);
+                }} className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create User</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage User Modal (Tabs: Details, Plan/Charge, Gift) */}
+      {isManageModalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-slate-800 shadow-xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+              <h2 className="text-lg font-bold text-slate-100">Manage User: {selectedUser.username}</h2>
+              <button onClick={() => setIsManageModalOpen(false)} className="text-slate-400 hover:text-slate-400">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            {/* Tabs Header */}
+            <div className="flex border-b border-slate-700 px-6 overflow-x-auto">
+              <button
+                onClick={() => setManageTab('details')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  manageTab === 'details' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                <Setting

@@ -1,0 +1,75 @@
+services:
+  sas-radius-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    dns:
+      - 10.70.95.150
+      - 10.70.95.162
+    container_name: sas-radius-app
+    restart: unless-stopped
+    user: "root:root"
+    privileged: true
+    pid: "host"
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=127.0.0.1
+      - DB_USER=radius
+      - DB_PASSWORD=radpass
+      - DB_NAME=radius
+      - RADIUS_SECRET=testing123
+    depends_on:
+      - sas-radius-db
+
+  sas-radius-db:
+    image: mariadb:10.11
+    container_name: sas-radius-db
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_123
+      MYSQL_DATABASE: radius
+      MYSQL_USER: radius
+      MYSQL_PASSWORD: radpass
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-proot_password_123",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sas-radius-core:
+    build:
+      context: .
+      dockerfile: freeradius.Dockerfile
+      network: host
+    dns:
+      - 10.70.95.150
+      - 10.70.95.162
+    container_name: sas-radius-core
+    restart: unless-stopped
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    depends_on:
+      sas-radius-db:
+        condition: service_healthy
+
+volumes:
+  db-data:

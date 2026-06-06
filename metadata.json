@@ -1,0 +1,6 @@
+{
+  "name": "RADIUS Accounting Server",
+  "description": "A SAS 4 RADIUS inspired accounting server dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
