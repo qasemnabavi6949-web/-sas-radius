@@ -16,7 +16,7 @@ services:
       - "0.0.0.0:3000:3000"
     environment:
       - NODE_ENV=production
-      - DB_HOST=127.0.0.1
+      - DB_HOST=sas-radius-db
       - DB_USER=radius
       - DB_PASSWORD=radpass
       - DB_NAME=radius
@@ -28,8 +28,6 @@ services:
     image: mariadb:10.11
     container_name: sas-radius-db
     restart: unless-stopped
-    ports:
-      - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root_password_123
       MYSQL_DATABASE: radius
