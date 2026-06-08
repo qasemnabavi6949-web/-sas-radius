@@ -563,7 +563,7 @@ export default function UserList() {
     );
   };
 
-  // ======================= MANAGE VIEW =======================
+  // ======================= MANAGE VIEW (بدون تغییر) =======================
   if (viewMode === 'manage' && manageUser) {
     const totalLimit = getTotalLimitBytes(manageUser);
     const used = manageUser.usedBytes || 0;
@@ -702,7 +702,7 @@ export default function UserList() {
     );
   }
 
-  // ======================= LIST VIEW =======================
+  // ======================= LIST VIEW (با تغییرات اعمال شده) =======================
   return (
     <div className="space-y-4 p-6 bg-gray-50 min-h-screen text-gray-800 font-sans">
       <div className="flex flex-wrap gap-6 bg-white p-4 border border-gray-200 rounded-xl shadow-sm text-sm font-medium">
@@ -718,27 +718,27 @@ export default function UserList() {
           <Search size={18} className="text-gray-400" />
           <input type="text" placeholder="Search username or profile..." className="bg-transparent outline-none text-sm w-full" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-sm transition">
-            <UserPlus size={18} /> New User
+        {/* دکمه Actions به همراه منوی کشویی - شامل گزینه New User */}
+        <div className="relative" ref={bulkDropdownRef}>
+          <button onClick={() => setBulkDropdownOpen(!bulkDropdownOpen)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-sm transition">
+            <Users size={18} /> Actions <ChevronDown size={16} />
           </button>
-          <div className="relative" ref={bulkDropdownRef}>
-            <button onClick={() => setBulkDropdownOpen(!bulkDropdownOpen)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-sm transition">
-              <Users size={18} /> Bulk Actions <ChevronDown size={16} />
-            </button>
-            {bulkDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                <div className="py-1">
-                  <button onClick={bulkDelete} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Trash2 size={16} /> Delete selected</button>
-                  <button onClick={() => bulkEnableDisable(true)} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><CheckCircle size={16} /> Enable selected</button>
-                  <button onClick={() => bulkEnableDisable(false)} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Ban size={16} /> Disable selected</button>
-                  <button onClick={bulkAddTraffic} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Upload size={16} /> Add traffic (MB)</button>
-                  <button onClick={bulkChangeProfile} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Package size={16} /> Change Profile</button>
-                  <button onClick={bulkChargeRenew} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><RefreshCw size={16} /> Charge / Renew</button>
-                </div>
+          {bulkDropdownOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+              <div className="py-1">
+                <button onClick={() => { setIsAddModalOpen(true); setBulkDropdownOpen(false); }} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                  <UserPlus size={16} /> New User
+                </button>
+                <hr className="my-1" />
+                <button onClick={bulkDelete} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Trash2 size={16} /> Delete selected</button>
+                <button onClick={() => bulkEnableDisable(true)} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><CheckCircle size={16} /> Enable selected</button>
+                <button onClick={() => bulkEnableDisable(false)} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Ban size={16} /> Disable selected</button>
+                <button onClick={bulkAddTraffic} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Upload size={16} /> Add traffic (MB)</button>
+                <button onClick={bulkChangeProfile} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><Package size={16} /> Change Profile</button>
+                <button onClick={bulkChargeRenew} className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><RefreshCw size={16} /> Charge / Renew</button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -791,6 +791,7 @@ export default function UserList() {
         </table>
       </div>
 
+      {/* مودال افزودن کاربر (بدون تغییر) */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg border border-gray-200 overflow-hidden">
