@@ -103,7 +103,6 @@ export default function UserList() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // ========== توابع جدید برای محاسبه ترافیک با bonusBytes ==========
   const getTotalLimitBytes = (user: any) => {
     const dataLimit = user.dataLimitBytes || 0;
     const bonus = user.bonusBytes || 0;
@@ -186,7 +185,6 @@ export default function UserList() {
     return diffDays > 0 ? diffDays : 0;
   };
 
-  // اصلاح شده: استفاده از getRemainingBytes برای محاسبه حجم باقی‌مانده
   const getUserStatus = (user: any) => {
     if (!user) return 'Disabled';
     const remainingBytes = getRemainingBytes(user);
@@ -567,13 +565,12 @@ export default function UserList() {
 
   // ======================= MANAGE VIEW =======================
   if (viewMode === 'manage' && manageUser) {
-    // محاسبه ترافیک برای نمایش در manage view
     const totalLimit = getTotalLimitBytes(manageUser);
     const used = manageUser.usedBytes || 0;
     const remaining = totalLimit - used;
     const trafficUsedStr = used > 0 ? formatBytes(used) : '0 B';
+    const totalLimitStr = totalLimit > 0 ? formatBytes(totalLimit) : 'Unlimited';
     const remainingStr = totalLimit > 0 ? formatBytes(remaining) : (remaining === 0 ? '0 B' : '∞');
-    const bonusStr = manageUser.bonusBytes > 0 ? ` (+${formatBytes(manageUser.bonusBytes)} bonus)` : '';
 
     return (
       <div className="space-y-4 p-6 bg-gray-50 min-h-screen text-gray-800 font-sans">
@@ -624,8 +621,8 @@ export default function UserList() {
                       <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Static IP</td><td className="p-4 text-indigo-600 font-bold">{manageUser.staticIp || manageUser.static_ip || 'Dynamic'}</td></tr>
                       <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Profile / Package</td><td className="p-4 text-blue-600 font-bold">{manageUser.group || 'None'}</td></tr>
                       <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Expiration</td><td className="p-4 text-gray-700 font-mono font-bold">{manageUser.expiration || 'Permanent'}</td></tr>
-                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Traffic Used</td><td className="p-4 font-bold text-gray-900">{trafficUsedStr} / {totalLimit > 0 ? formatBytes(totalLimit) : '∞'}{bonusStr}</td></tr>
-                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Remaining</td><td className="p-4 font-bold text-green-600">{totalLimit > 0 ? formatBytes(remaining) : '∞'}{bonusStr}</td></tr>
+                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Traffic Used</td><td className="p-4 font-bold text-gray-900">{trafficUsedStr} / {totalLimitStr}</td></tr>
+                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Remaining</td><td className="p-4 font-bold text-green-600">{remainingStr}</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -689,7 +686,7 @@ export default function UserList() {
                   <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-200"><tr><th className="p-4">Package / Profile</th><th className="p-4">Old Exp</th><th className="p-4">New Exp</th><th className="p-4">Price</th><th className="p-4 text-right">Date</th></tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {Array.isArray(userHistoryData) && userHistoryData.length === 0 ? (
-                      <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-medium italic">No activation history found for this account.ERC</td></tr>
+                      <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-medium italic">No activation history found for this account.</td></tr>
                     ) : (
                       userHistoryData.map((h: any, i) => (
                         <tr key={i}><td className="p-4 font-bold text-blue-600">{h.profile}</td><td className="p-4 text-gray-400 font-mono text-xs">{h.oldExpiration}</td><td className="p-4 text-gray-700 font-mono text-xs font-bold">{h.newExpiration}</td><td className="p-4 text-green-600 font-bold">{h.price}</td><td className="p-4 text-gray-400 text-right text-xs font-medium">{new Date(h.created_at).toLocaleString()}</td></tr>
@@ -773,8 +770,7 @@ export default function UserList() {
               const totalLimit = getTotalLimitBytes(user);
               const used = user.usedBytes || 0;
               const trafficUsedStr = used > 0 ? formatBytes(used) : '0 B';
-              const limitStr = totalLimit > 0 ? formatBytes(totalLimit) : 'Unlimited';
-              const bonusStr = user.bonusBytes > 0 ? ` (+${formatBytes(user.bonusBytes)} bonus)` : '';
+              const totalLimitStr = totalLimit > 0 ? formatBytes(totalLimit) : 'Unlimited';
               return (
                 <tr key={user.username || idx} className={`hover:bg-gray-50 transition cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`} onDoubleClick={() => handleOpenManageFromList(user)}>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" className="rounded border-gray-300" checked={isSelected} onChange={() => toggleSelectOne(user.username)} /></td>
@@ -783,7 +779,7 @@ export default function UserList() {
                   <td className="p-3 font-bold text-blue-600">{user.username}</td>
                   <td className="p-3 text-gray-500 font-mono">{user.expiration || 'Permanent'}</td>
                   <td className="p-3 text-blue-600 font-semibold">{user.group || 'None'}</td>
-                  <td className="p-3 font-semibold text-gray-900">{trafficUsedStr} / {limitStr}{bonusStr}</td>
+                  <td className="p-3 font-semibold text-gray-900">{trafficUsedStr} / {totalLimitStr}</td>
                   <td className="p-3"><span className="bg-gray-100 border border-gray-300 px-2 py-0.5 rounded font-bold text-gray-800">{user.expiration ? `${daysLeft} Days` : '∞'}</span></td>
                   <td className="p-3 text-right">
                     <button onClick={(e) => { e.stopPropagation(); handleOpenManageFromList(user); }} className="text-gray-400 hover:text-blue-600 p-1"><Edit2 size={16}/></button>
