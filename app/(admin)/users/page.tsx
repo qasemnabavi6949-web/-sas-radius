@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Package, Activity, WifiOff, Zap, RefreshCw, Edit2, Plus, Trash2,
   FileClock, Search, ArrowLeft, UserPlus, Upload, Key,
@@ -10,7 +10,6 @@ import dynamic from 'next/dynamic';
 
 const UserTrafficChart = dynamic(() => import('../report/TrafficReportChart'), { ssr: false });
 
-// ---------- Helper: تولید آواتار مدرن (SVG با گرادیان) ----------
 function generateAvatarSVG(username: string): string {
   const firstLetter = username.charAt(0).toUpperCase();
   const hue = (username.charCodeAt(0) * 7 + (username.charCodeAt(1) || 0) * 13) % 360;
@@ -40,7 +39,6 @@ export default function UserList() {
   const [userTrafficMonth, setUserTrafficMonth] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
   const [userTrafficYear, setUserTrafficYear] = useState(new Date().getFullYear().toString());
 
-  // Add User Modal state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -53,7 +51,6 @@ export default function UserList() {
   const [newAddress, setNewAddress] = useState('');
   const [newNationalId, setNewNationalId] = useState('');
 
-  // Edit User Form state
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -71,18 +68,22 @@ export default function UserList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [bulkDropdownOpen, setBulkDropdownOpen] = useState(false);
   const bulkDropdownRef = useRef<HTMLDivElement>(null);
-
-  // ---------- حالت جدید: انتخاب چندتایی ----------
   const [selectedUsernames, setSelectedUsernames] = useState<Set<string>>(new Set());
-
-  // ---------- مرتب‌سازی ----------
   const [sortColumn, setSortColumn] = useState<'username' | 'status' | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const currentUsernameRef = useRef<string>('');
 
   useEffect(() => {
     fetchUsers();
     fetchProfiles();
   }, []);
+
+  useEffect(() => {
+    if (manageUser?.username) {
+      currentUsernameRef.current = manageUser.username;
+    }
+  }, [manageUser]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -94,13 +95,26 @@ export default function UserList() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // ---------- توابع کمکی ----------
   const formatBytes = (bytes: number) => {
     if (!bytes || isNaN(bytes) || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // ========== توابع جدید برای محاسبه ترافیک با bonusBytes ==========
+  const getTotalLimitBytes = (user: any) => {
+    const dataLimit = user.dataLimitBytes || 0;
+    const bonus = user.bonusBytes || 0;
+    return dataLimit + bonus;
+  };
+
+  const getRemainingBytes = (user: any) => {
+    const totalLimit = getTotalLimitBytes(user);
+    const used = user.usedBytes || 0;
+    const remaining = totalLimit - used;
+    return remaining > 0 ? remaining : 0;
   };
 
   const fetchProfiles = async () => {
@@ -172,13 +186,17 @@ export default function UserList() {
     return diffDays > 0 ? diffDays : 0;
   };
 
+  // اصلاح شده: استفاده از getRemainingBytes برای محاسبه حجم باقی‌مانده
   const getUserStatus = (user: any) => {
     if (!user) return 'Disabled';
-    if (user.status === 'Disabled' || user.accountStatus === 'Disabled') return 'Disabled';
-    if (user.isOnline === 1 || user.status === 'Online') return 'Online';
+    const remainingBytes = getRemainingBytes(user);
     const daysLeft = calculateDaysValue(user.expiration);
+    const isOnline = (user.isOnline === 1 || user.status === 'Online');
+
+    if (remainingBytes === 0 && daysLeft > 0) return 'Depleted';
     if (daysLeft === 0) return 'Expired';
-    if (user.remainingBytes === 0) return 'Depleted';
+    if (isOnline) return 'Online';
+    if (user.status === 'Disabled' || user.accountStatus === 'Disabled') return 'Disabled';
     return 'Active';
   };
 
@@ -186,9 +204,6 @@ export default function UserList() {
     if (!Array.isArray(users)) return 0;
     return users.filter(u => getUserStatus(u) === statusType).length;
   };
-
-  // ---------- عملیات گروهی (Bulk) ----------
-  const getSelectedUsers = () => users.filter(u => selectedUsernames.has(u.username));
 
   const bulkDelete = async () => {
     if (selectedUsernames.size === 0) return alert('No users selected.');
@@ -222,15 +237,19 @@ export default function UserList() {
     const mb = prompt('Enter traffic amount to ADD (in MB) for each selected user:', '1024');
     if (!mb || isNaN(Number(mb))) return;
     const bytes = parseFloat(mb) * 1024 * 1024;
+    let successCount = 0;
     for (const username of selectedUsernames) {
-      await fetch(`/api/users/${username}/charge`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_traffic', bytes, traffic_mb: parseFloat(mb) })
-      }).catch(console.error);
+      try {
+        const res = await fetch(`/api/users/${username}/charge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add_traffic', bytes, traffic_mb: parseFloat(mb) })
+        });
+        if (res.ok) successCount++;
+      } catch (err) { console.error(err); }
     }
-    alert(`${mb} MB added to each selected user.`);
-    fetchUsers();
+    alert(`${successCount} out of ${selectedUsernames.size} users received ${mb} MB.`);
+    await fetchUsers();
     setBulkDropdownOpen(false);
   };
 
@@ -267,7 +286,6 @@ export default function UserList() {
     setBulkDropdownOpen(false);
   };
 
-  // ---------- عملیات تکی (از طریق دابل‌کلیک یا آیکون مداد) ----------
   const handleOpenManageFromList = (user: any) => {
     setManageUser(user);
     setEditUsername(user?.username || '');
@@ -287,7 +305,6 @@ export default function UserList() {
     setViewMode('manage');
   };
 
-  // Add User submit
   const handleAddUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUsername || !newProfile) {
@@ -330,7 +347,6 @@ export default function UserList() {
     });
   };
 
-  // Manage view handlers (بدون تغییر از کد اصلی)
   const handleToggleStatusManage = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!manageUser) return;
@@ -394,21 +410,48 @@ export default function UserList() {
     }
   };
 
-  const handleAddTrafficCustomMB = (e: React.MouseEvent) => {
+  const handleAddTrafficCustomMB = async (e: React.MouseEvent) => {
     e.preventDefault();
+    let username = currentUsernameRef.current || manageUser?.username;
+    if (!username) {
+      alert("User information missing. Please go back and select a user again.");
+      return;
+    }
     const inputMb = prompt("Enter traffic amount to ADD (in MB):", "1024");
     if (!inputMb || isNaN(Number(inputMb))) return;
-    const bytesToAdd = parseFloat(inputMb) * 1024 * 1024;
-    fetch(`/api/users/${manageUser.username}/charge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add_traffic', bytes: bytesToAdd, traffic_mb: parseFloat(inputMb) })
-    }).then(res => {
-      if (res.ok) {
-        alert(`${inputMb} MB added successfully!`);
-        fetchUsers();
+    const mb = parseFloat(inputMb);
+    const bytes = mb * 1024 * 1024;
+    try {
+      let res = await fetch(`/api/users/${username}/charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add_traffic', bytes, traffic_mb: mb })
+      });
+      let data = await res.json();
+      if (!res.ok) {
+        console.warn("Fallback to action 'add'", data);
+        res = await fetch(`/api/users/${username}/charge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add', bytes, traffic_mb: mb })
+        });
+        data = await res.json();
       }
-    });
+      if (res.ok) {
+        alert(`${mb} MB added successfully to ${username}!`);
+        await fetchUsers();
+        const singleRes = await fetch(`/api/users/${username}`, { cache: 'no-store' });
+        if (singleRes.ok) {
+          const updated = await singleRes.json();
+          setManageUser(updated);
+          currentUsernameRef.current = updated.username;
+        }
+      } else {
+        alert(`Server error: ${JSON.stringify(data)}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err}`);
+    }
   };
 
   const handleRenameUserManage = (e: React.MouseEvent) => {
@@ -473,7 +516,6 @@ export default function UserList() {
     });
   };
 
-  // مرتب‌سازی و فیلتر
   const filteredUsers = users.filter(u =>
     u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.group?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -507,8 +549,32 @@ export default function UserList() {
     setSelectedUsernames(newSet);
   };
 
-  // ======================= RENDER MANAGE VIEW =======================
+  const StatusBadge = ({ status }: { status: string }) => {
+    const config: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+      Online: { bg: 'bg-blue-100', text: 'text-blue-800', icon: <Zap size={12} className="inline mr-1" /> },
+      Active: { bg: 'bg-green-100', text: 'text-green-800', icon: <CheckCircle size={12} className="inline mr-1" /> },
+      Expired: { bg: 'bg-orange-100', text: 'text-orange-800', icon: <Clock size={12} className="inline mr-1" /> },
+      Depleted: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: <Ban size={12} className="inline mr-1" /> },
+      Disabled: { bg: 'bg-red-100', text: 'text-red-800', icon: <X size={12} className="inline mr-1" /> },
+    };
+    const { bg, text, icon } = config[status] || config.Disabled;
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${bg} ${text}`}>
+        {icon} {status}
+      </span>
+    );
+  };
+
+  // ======================= MANAGE VIEW =======================
   if (viewMode === 'manage' && manageUser) {
+    // محاسبه ترافیک برای نمایش در manage view
+    const totalLimit = getTotalLimitBytes(manageUser);
+    const used = manageUser.usedBytes || 0;
+    const remaining = totalLimit - used;
+    const trafficUsedStr = used > 0 ? formatBytes(used) : '0 B';
+    const remainingStr = totalLimit > 0 ? formatBytes(remaining) : (remaining === 0 ? '0 B' : '∞');
+    const bonusStr = manageUser.bonusBytes > 0 ? ` (+${formatBytes(manageUser.bonusBytes)} bonus)` : '';
+
     return (
       <div className="space-y-4 p-6 bg-gray-50 min-h-screen text-gray-800 font-sans">
         <button
@@ -558,8 +624,8 @@ export default function UserList() {
                       <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Static IP</td><td className="p-4 text-indigo-600 font-bold">{manageUser.staticIp || manageUser.static_ip || 'Dynamic'}</td></tr>
                       <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Profile / Package</td><td className="p-4 text-blue-600 font-bold">{manageUser.group || 'None'}</td></tr>
                       <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Expiration</td><td className="p-4 text-gray-700 font-mono font-bold">{manageUser.expiration || 'Permanent'}</td></tr>
-                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Traffic Used</td><td className="p-4 font-bold text-gray-900">{manageUser.traffic || 'N/A'}</td></tr>
-                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Remaining</td><td className="p-4 font-bold text-green-600">{manageUser.remainingStr || '∞'}</td></tr>
+                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Traffic Used</td><td className="p-4 font-bold text-gray-900">{trafficUsedStr} / {totalLimit > 0 ? formatBytes(totalLimit) : '∞'}{bonusStr}</td></tr>
+                      <tr><td className="p-4 font-bold text-gray-500 bg-gray-50/50 uppercase text-[10px]">Remaining</td><td className="p-4 font-bold text-green-600">{totalLimit > 0 ? formatBytes(remaining) : '∞'}{bonusStr}</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -623,7 +689,7 @@ export default function UserList() {
                   <thead className="bg-gray-50 text-[10px] font-black uppercase text-gray-500 border-b border-gray-200"><tr><th className="p-4">Package / Profile</th><th className="p-4">Old Exp</th><th className="p-4">New Exp</th><th className="p-4">Price</th><th className="p-4 text-right">Date</th></tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {Array.isArray(userHistoryData) && userHistoryData.length === 0 ? (
-                      <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-medium italic">No activation history found for this account.</td></tr>
+                      <tr><td colSpan={5} className="p-10 text-center text-gray-400 font-medium italic">No activation history found for this account.ERC</td></tr>
                     ) : (
                       userHistoryData.map((h: any, i) => (
                         <tr key={i}><td className="p-4 font-bold text-blue-600">{h.profile}</td><td className="p-4 text-gray-400 font-mono text-xs">{h.oldExpiration}</td><td className="p-4 text-gray-700 font-mono text-xs font-bold">{h.newExpiration}</td><td className="p-4 text-green-600 font-bold">{h.price}</td><td className="p-4 text-gray-400 text-right text-xs font-medium">{new Date(h.created_at).toLocaleString()}</td></tr>
@@ -639,10 +705,9 @@ export default function UserList() {
     );
   }
 
-  // ======================= LIST VIEW با چک‌باکس، آواتار و دکمه گروهی در چپ =======================
+  // ======================= LIST VIEW =======================
   return (
     <div className="space-y-4 p-6 bg-gray-50 min-h-screen text-gray-800 font-sans">
-      {/* Status Bar */}
       <div className="flex flex-wrap gap-6 bg-white p-4 border border-gray-200 rounded-xl shadow-sm text-sm font-medium">
         <div className="flex items-center gap-2"><span className="w-3 h-3 bg-blue-500 rounded-sm"></span> Online ({countStatus('Online')})</div>
         <div className="flex items-center gap-2"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Active ({countStatus('Active')})</div>
@@ -657,11 +722,9 @@ export default function UserList() {
           <input type="text" placeholder="Search username or profile..." className="bg-transparent outline-none text-sm w-full" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
-          {/* دکمه New User (راست) */}
           <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-sm transition">
             <UserPlus size={18} /> New User
           </button>
-          {/* دکمه Bulk Actions در سمت چپ (واقعاً در چپ قرار دارد چون در کد اول آمده) */}
           <div className="relative" ref={bulkDropdownRef}>
             <button onClick={() => setBulkDropdownOpen(!bulkDropdownOpen)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-sm transition">
               <Users size={18} /> Bulk Actions <ChevronDown size={16} />
@@ -707,15 +770,20 @@ export default function UserList() {
               const currentStatus = getUserStatus(user);
               const daysLeft = calculateDaysValue(user.expiration);
               const isSelected = selectedUsernames.has(user.username);
+              const totalLimit = getTotalLimitBytes(user);
+              const used = user.usedBytes || 0;
+              const trafficUsedStr = used > 0 ? formatBytes(used) : '0 B';
+              const limitStr = totalLimit > 0 ? formatBytes(totalLimit) : 'Unlimited';
+              const bonusStr = user.bonusBytes > 0 ? ` (+${formatBytes(user.bonusBytes)} bonus)` : '';
               return (
                 <tr key={user.username || idx} className={`hover:bg-gray-50 transition cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`} onDoubleClick={() => handleOpenManageFromList(user)}>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}><input type="checkbox" className="rounded border-gray-300" checked={isSelected} onChange={() => toggleSelectOne(user.username)} /></td>
                   <td className="p-3"><img src={generateAvatarSVG(user.username)} alt="avatar" className="w-8 h-8 rounded-full object-cover shadow-sm border border-white" /></td>
-                  <td className="p-3"><span className={`w-3 h-3 block rounded-sm shadow-sm ${currentStatus === 'Disabled' ? 'bg-red-500' : currentStatus === 'Online' ? 'bg-blue-500' : currentStatus === 'Expired' ? 'bg-orange-500' : currentStatus === 'Depleted' ? 'bg-yellow-400' : 'bg-green-500'}`}></span></td>
+                  <td className="p-3"><StatusBadge status={currentStatus} /></td>
                   <td className="p-3 font-bold text-blue-600">{user.username}</td>
                   <td className="p-3 text-gray-500 font-mono">{user.expiration || 'Permanent'}</td>
                   <td className="p-3 text-blue-600 font-semibold">{user.group || 'None'}</td>
-                  <td className="p-3 font-semibold text-gray-900">{user.traffic || '0.00 MB / Unlimited'}</td>
+                  <td className="p-3 font-semibold text-gray-900">{trafficUsedStr} / {limitStr}{bonusStr}</td>
                   <td className="p-3"><span className="bg-gray-100 border border-gray-300 px-2 py-0.5 rounded font-bold text-gray-800">{user.expiration ? `${daysLeft} Days` : '∞'}</span></td>
                   <td className="p-3 text-right">
                     <button onClick={(e) => { e.stopPropagation(); handleOpenManageFromList(user); }} className="text-gray-400 hover:text-blue-600 p-1"><Edit2 size={16}/></button>
@@ -727,7 +795,6 @@ export default function UserList() {
         </table>
       </div>
 
-      {/* Add User Modal (بدون تغییر) */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg border border-gray-200 overflow-hidden">
