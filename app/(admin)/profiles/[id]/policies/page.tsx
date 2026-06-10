@@ -1,0 +1,205 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Plus, ArrowLeft, Edit2, Trash2, X } from 'lucide-react';
+
+export default function PoliciesPage() {
+  const router = useRouter();
+  const params = useParams();
+  const profileId = params.id as string;
+  const [policies, setPolicies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingPolicy, setEditingPolicy] = useState<any>(null);
+
+  const fetchPolicies = async () => {
+    if (!profileId) return;
+    try {
+      const res = await fetch(`/api/profiles/${profileId}/policies`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const converted = data.map((item: any) => {
+          let daysArray: string[] = [];
+          try {
+            let raw = item.days_of_week;
+            if (raw) {
+              let parsed = JSON.parse(raw);
+              if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+              daysArray = Array.isArray(parsed) ? parsed : [];
+            }
+          } catch (e) { daysArray = []; }
+          return {
+            ...item,
+            days_of_week: daysArray,
+            enable_burst: item.enable_burst === 1,
+          };
+        });
+        setPolicies(converted);
+      } else setPolicies([]);
+    } catch (err) { console.error(err); setPolicies([]); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchPolicies(); }, [profileId]);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this policy?')) return;
+    await fetch(`/api/profiles/${profileId}/policies/${id}`, { method: 'DELETE' });
+    fetchPolicies();
+  };
+
+  const handleSave = async (body: any) => {
+    const url = editingPolicy ? `/api/profiles/${profileId}/policies/${editingPolicy.id}` : `/api/profiles/${profileId}/policies`;
+    const method = editingPolicy ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (res.ok) { setShowModal(false); fetchPolicies(); }
+    else alert('Error saving policy');
+  };
+
+  if (loading) return <div className="p-6">Loading...</div>;
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen text-gray-800">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => router.back()} className="flex items-center gap-1 bg-white border px-3 py-2 rounded-lg shadow-sm">
+          <ArrowLeft size={16} /> Back
+        </button>
+        <h1 className="text-2xl font-bold">Profile Policies</h1>
+        <button onClick={() => { setEditingPolicy(null); setShowModal(true); }} className="bg-blue-600 text-white px-3 py-2 rounded-lg ml-auto flex items-center gap-1">
+          <Plus size={16} /> Add Policy
+        </button>
+      </div>
+
+      {policies.length === 0 ? (
+        <div className="bg-white rounded-xl border p-8 text-center text-gray-500">No policies defined.</div>
+      ) : (
+        <div className="bg-white rounded-xl border shadow-sm overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs uppercase text-gray-500 border-b">
+              <tr>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">From / Threshold</th>
+                <th className="px-4 py-3">To</th>
+                <th className="px-4 py-3">Days</th>
+                <th className="px-4 py-3">Target</th>
+                <th className="px-4 py-3">Details</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {policies.map(p => (
+                <tr key={p.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">{p.type === 'time' ? 'Time Based' : 'Traffic Based'}</td>
+                  <td className="px-4 py-3">{p.type === 'time' ? p.start_time : `${p.traffic_threshold_mb} MB`}</td>
+                  <td className="px-4 py-3">{p.type === 'time' ? p.end_time : '-'}</td>
+                  <td className="px-4 py-3">{p.days_of_week?.map((d: string) => d.slice(0,3)).join(', ') || 'Everyday'}</td>
+                  <td className="px-4 py-3">{p.target === 'bandwidth' ? 'Bandwidth' : 'Accounting'}</td>
+                  <td className="px-4 py-3">{p.target === 'bandwidth' ? `${p.download_rate}/${p.upload_rate} kbps${p.enable_burst ? ' + Burst' : ''}` : `${p.download_ratio}% / ${p.upload_ratio}%`}</td>
+                  <td className="px-4 py-3 text-right space-x-2">
+                    <button onClick={() => { setEditingPolicy(p); setShowModal(true); }} className="text-gray-400 hover:text-blue-600"><Edit2 size={16} /></button>
+                    <button onClick={() => handleDelete(p.id)} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showModal && (
+        <PolicyModal policy={editingPolicy} onClose={() => setShowModal(false)} onSave={handleSave} />
+      )}
+    </div>
+  );
+}
+
+function PolicyModal({ policy, onClose, onSave }: any) {
+  const weekDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const [type, setType] = useState(policy?.type || 'time');
+  const [startTime, setStartTime] = useState(policy?.start_time || '00:00');
+  const [endTime, setEndTime] = useState(policy?.end_time || '23:59');
+  const [days, setDays] = useState<string[]>(policy?.days_of_week || []);
+  const [target, setTarget] = useState(policy?.target || 'bandwidth');
+  const [dlRate, setDlRate] = useState(policy?.download_rate || 0);
+  const [ulRate, setUlRate] = useState(policy?.upload_rate || 0);
+  const [dlRatio, setDlRatio] = useState(policy?.download_ratio || 100);
+  const [ulRatio, setUlRatio] = useState(policy?.upload_ratio || 100);
+  const [burst, setBurst] = useState(policy?.enable_burst || false);
+  const [threshold, setThreshold] = useState(policy?.traffic_threshold_mb || 1000);
+
+  const handleSubmit = () => {
+    const body: any = { type, target, days_of_week: JSON.stringify(days) };
+    if (type === 'time') { body.start_time = startTime; body.end_time = endTime; }
+    else body.traffic_threshold_mb = threshold;
+    if (target === 'bandwidth') { body.download_rate = dlRate; body.upload_rate = ulRate; body.enable_burst = burst ? 1 : 0; }
+    else { body.download_ratio = dlRatio; body.upload_ratio = ulRatio; body.enable_burst = 0; }
+    onSave(body);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl">
+        <div className="flex justify-between items-center border-b p-4">
+          <h2 className="text-lg font-bold">{policy ? 'Edit Policy' : 'Add Policy'}</h2>
+          <button onClick={onClose} className="text-gray-400"><X size={20} /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block mb-1 font-medium">Policy Type</label>
+            <select value={type} onChange={e => setType(e.target.value)} className="w-full border rounded-md p-2">
+              <option value="time">Time Based</option>
+              <option value="traffic">Traffic Based</option>
+            </select>
+          </div>
+          <div>
+            <label className="block mb-2">Days of Week</label>
+            <div className="flex flex-wrap gap-3">
+              {weekDays.map(day => (
+                <label key={day} className="inline-flex items-center gap-1">
+                  <input type="checkbox" checked={days.includes(day)} onChange={e => { if (e.target.checked) setDays([...days, day]); else setDays(days.filter(d => d !== day)); }} />
+                  <span className="text-sm capitalize">{day.slice(0,3)}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          {type === 'time' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div><label>Start Time</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full border rounded-md p-2" /></div>
+              <div><label>End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full border rounded-md p-2" /></div>
+            </div>
+          )}
+          {type === 'traffic' && (
+            <div><label>Traffic Threshold (MB)</label><input type="number" value={threshold} onChange={e => setThreshold(Number(e.target.value))} className="w-full border rounded-md p-2" /></div>
+          )}
+          <div>
+            <label className="block mb-1">Target</label>
+            <select value={target} onChange={e => setTarget(e.target.value)} className="w-full border rounded-md p-2">
+              <option value="bandwidth">Bandwidth</option>
+              <option value="accounting">Accounting</option>
+            </select>
+          </div>
+          {target === 'bandwidth' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label>Download Rate (kbps)</label><input type="number" value={dlRate} onChange={e => setDlRate(Number(e.target.value))} className="w-full border rounded-md p-2" /></div>
+                <div><label>Upload Rate (kbps)</label><input type="number" value={ulRate} onChange={e => setUlRate(Number(e.target.value))} className="w-full border rounded-md p-2" /></div>
+              </div>
+              <div className="flex items-center gap-2"><input type="checkbox" id="burst" checked={burst} onChange={e => setBurst(e.target.checked)} /><label htmlFor="burst">Enable Burst</label></div>
+            </>
+          )}
+          {target === 'accounting' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div><label>Download Ratio (%)</label><input type="number" value={dlRatio} onChange={e => setDlRatio(Number(e.target.value))} className="w-full border rounded-md p-2" /></div>
+              <div><label>Upload Ratio (%)</label><input type="number" value={ulRatio} onChange={e => setUlRatio(Number(e.target.value))} className="w-full border rounded-md p-2" /></div>
+            </div>
+          )}
+        </div>
+        <div className="border-t p-4 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 border rounded-md">Cancel</button>
+          <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 text-white rounded-md">Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
