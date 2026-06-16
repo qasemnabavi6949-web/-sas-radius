@@ -1,15 +1,19 @@
-import type {Metadata} from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'SAS RADIUS Accounting',
-  description: 'RADIUS Accounting Server Dashboard',
+  title: "QASEM Radius Portal",
+  description: "Managed Radius & User Self-Care Portal",
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="font-sans text-slate-100 antialiased bg-slate-900/40 min-h-screen" suppressHydrationWarning>
+    <html lang="en">
+      <body className="antialiased">
         {children}
       </body>
     </html>

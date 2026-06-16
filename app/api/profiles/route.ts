@@ -1,79 +1,51 @@
 import { NextResponse } from 'next/server';
-import { query, initDb } from '@/lib/db';
-
-export const dynamic = 'force-dynamic';
+import { query } from '@/lib/db';
 
 export async function GET() {
   try {
-    await initDb();
-    
-    // Auto-migrate to add new columns if they don't exist
-    try { await query("ALTER TABLE dashboard_profiles ADD COLUMN type VARCHAR(32) DEFAULT 'data'"); } catch {}
-    try { await query("ALTER TABLE dashboard_profiles ADD COLUMN validityDays INT DEFAULT 30"); } catch {}
-
-    const profiles = await query('SELECT * FROM dashboard_profiles ORDER BY id DESC');
+    const profiles = await query(`SELECT * FROM dashboard_profiles ORDER BY id`);
     return NextResponse.json(profiles);
   } catch (error: any) {
-    console.error('DB Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    await initDb();
-    
-    // Auto-migrate
-    try { await query("ALTER TABLE dashboard_profiles ADD COLUMN type VARCHAR(32) DEFAULT 'data'"); } catch {}
-    try { await query("ALTER TABLE dashboard_profiles ADD COLUMN validityDays INT DEFAULT 30"); } catch {}
-    try { await query("ALTER TABLE dashboard_profiles ADD COLUMN speedLimit VARCHAR(64)"); } catch {}
-    try { await query("ALTER TABLE dashboard_profiles ADD COLUMN description VARCHAR(255)"); } catch {}
+    const body = await req.json();
+    const {
+      name, price, downloadSpeed, uploadSpeed, totalTraffic, validityDays,
+      enabled, vat, short_description, profile_type,
+      limit_expiration_value, limit_expiration_unit, limit_uptime_value,
+      limit_download_mb, limit_upload_mb, limit_traffic_mb,
+      daily_download_limit_mb, daily_traffic_limit_mb, daily_uptime_minutes,
+      fup_daily_quota_mb, fup_speed_after_quota_kbps, fup_free_start, fup_free_end, fup_reset_time,
+      expired_next_profile, daily_limit_next_profile
+    } = body;
 
-    const data = await req.json();
-    
-    // Insert into Dashboard DB
-    await query(`
-      INSERT INTO dashboard_profiles (name, price, downloadSpeed, uploadSpeed, totalTraffic, downloadTraffic, uploadTraffic, dailyQuota, nextPackage, type, validityDays, speedLimit, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      data.name ?? null, 
-      data.price ?? null, 
-      data.downloadSpeed ?? null, 
-      data.uploadSpeed ?? null, 
-      data.totalTraffic ?? null, 
-      data.downloadTraffic ?? null, 
-      data.uploadTraffic ?? null, 
-      data.dailyQuota ?? null, 
-      data.nextPackage ?? null, 
-      data.type ?? 'data', 
-      (typeof data.validityDays === 'number' && !isNaN(data.validityDays)) ? data.validityDays : 30,
-      data.speedLimit ?? null,
-      data.description ?? null
-    ]);
-
-    // Add speed limits to FreeRADIUS group tables if it's a data profile
-    if (data.type === 'data') {
-        const radGroupUpload = parseInt(data.uploadSpeed || '0') * 1024 * 1024;
-        const radGroupDownload = parseInt(data.downloadSpeed || '0') * 1024 * 1024;
-        
-        if (!isNaN(radGroupUpload) && !isNaN(radGroupDownload) && (radGroupUpload > 0 || radGroupDownload > 0)) {
-            const mikrotikRateLimit = `${radGroupUpload}/${radGroupDownload}`;
-            await query(`
-              INSERT INTO radgroupreply (groupname, attribute, op, value)
-              VALUES (?, 'MikroTik-Rate-Limit', '=', ?)
-            `, [data.name ?? '', mikrotikRateLimit]);
-        }
-
-        // Request NAS to send Volume Updates every 60 seconds
-        await query(`
-          INSERT INTO radgroupreply (groupname, attribute, op, value)
-          VALUES (?, 'Acct-Interim-Interval', '=', '60')
-        `, [data.name ?? '']);
-    }
-
-    return NextResponse.json({ success: true });
+    const result = await query(
+      `INSERT INTO dashboard_profiles (
+        name, price, downloadSpeed, uploadSpeed, totalTraffic, validityDays,
+        enabled, vat, short_description, profile_type,
+        limit_expiration_value, limit_expiration_unit, limit_uptime_value,
+        limit_download_mb, limit_upload_mb, limit_traffic_mb,
+        daily_download_limit_mb, daily_traffic_limit_mb, daily_uptime_minutes,
+        fup_daily_quota_mb, fup_speed_after_quota_kbps, fup_free_start, fup_free_end, fup_reset_time,
+        expired_next_profile, daily_limit_next_profile
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name, price, downloadSpeed, uploadSpeed, totalTraffic, validityDays,
+        enabled ?? 1, vat ?? 0, short_description || null, profile_type || 'prepaid',
+        limit_expiration_value || null, limit_expiration_unit || null, limit_uptime_value || null,
+        limit_download_mb || null, limit_upload_mb || null, limit_traffic_mb || null,
+        daily_download_limit_mb || null, daily_traffic_limit_mb || null, daily_uptime_minutes || null,
+        fup_daily_quota_mb ?? 2560, fup_speed_after_quota_kbps ?? 300, fup_free_start || '00:00:00', fup_free_end || '08:00:00', fup_reset_time || '00:00:00',
+        expired_next_profile || null, daily_limit_next_profile || null
+      ]
+    );
+    return NextResponse.json({ id: result.insertId, ...body });
   } catch (error: any) {
-    console.error('DB Error:', error);
-    return NextResponse.json({ error: error.message, stack: error.stack }, { status: 500 });
+    console.error(error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -1,0 +1,387 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Plus, Edit2, Trash2, Copy, ChevronDown, ArrowLeft, Clock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
+export default function ProfilesPage() {
+  const router = useRouter();
+  const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [allProfiles, setAllProfiles] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<any>(null);
+
+  useEffect(() => {
+    fetchProfiles();
+    fetchAllProfiles();
+  }, []);
+
+  const fetchProfiles = async () => {
+    try {
+      const res = await fetch('/api/profiles');
+      const data = await res.json();
+      setProfiles(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllProfiles = async () => {
+    try {
+      const res = await fetch('/api/profiles');
+      const data = await res.json();
+      setAllProfiles(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === profiles.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(profiles.map(p => p.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) {
+      alert('No profiles selected.');
+      return;
+    }
+    if (!confirm(`Delete ${selectedIds.size} selected profile(s)?`)) return;
+    for (const id of selectedIds) {
+      await fetch(`/api/profiles/${id}`, { method: 'DELETE' });
+    }
+    fetchProfiles();
+    fetchAllProfiles();
+    setSelectedIds(new Set());
+    setDropdownOpen(false);
+  };
+
+  const handleEditSelected = () => {
+    if (selectedIds.size !== 1) {
+      alert('Please select exactly one profile to edit.');
+      return;
+    }
+    const profile = profiles.find(p => p.id === Array.from(selectedIds)[0]);
+    if (profile) {
+      setEditingProfile(profile);
+      setViewMode('form');
+    }
+    setDropdownOpen(false);
+  };
+
+  const handleCopySelected = async () => {
+    if (selectedIds.size !== 1) {
+      alert('Please select exactly one profile to copy.');
+      return;
+    }
+    const profile = profiles.find(p => p.id === Array.from(selectedIds)[0]);
+    if (!profile) return;
+    const newName = prompt('Enter new profile name', `${profile.name} (copy)`);
+    if (!newName) return;
+    const copyData = { ...profile, id: undefined, name: newName };
+    const res = await fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(copyData),
+    });
+    if (res.ok) {
+      fetchProfiles();
+      fetchAllProfiles();
+      setSelectedIds(new Set());
+    } else {
+      alert('Copy failed');
+    }
+    setDropdownOpen(false);
+  };
+
+  const handleNewProfile = () => {
+    setEditingProfile(null);
+    setViewMode('form');
+    setDropdownOpen(false);
+  };
+
+  const handleRowDoubleClick = (profile: any) => {
+    setEditingProfile(profile);
+    setViewMode('form');
+  };
+
+  const handleCancelForm = () => {
+    setViewMode('list');
+    setEditingProfile(null);
+  };
+
+  const handleSaveForm = async (data: any) => {
+    const url = editingProfile ? `/api/profiles/${editingProfile.id}` : '/api/profiles';
+    const method = editingProfile ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      setViewMode('list');
+      fetchProfiles();
+      fetchAllProfiles();
+      setSelectedIds(new Set());
+    } else {
+      alert('Error saving profile');
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading...</div>;
+
+  if (viewMode === 'form') {
+    return (
+      <ProfileForm
+        profile={editingProfile}
+        allProfiles={allProfiles}
+        onCancel={handleCancelForm}
+        onSave={handleSaveForm}
+      />
+    );
+  }
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen text-gray-800">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Data Profiles</h1>
+        <div className="relative">
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-sm"
+          >
+            Actions <ChevronDown size={18} />
+          </button>
+          {dropdownOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+              <div className="py-1">
+                <button
+                  onClick={handleNewProfile}
+                  className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <Plus size={16} /> New Profile
+                </button>
+                <button
+                  onClick={handleEditSelected}
+                  className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <Edit2 size={16} /> Edit Selected
+                </button>
+                <button
+                  onClick={handleCopySelected}
+                  className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <Copy size={16} /> Copy Selected
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  className="flex items-center gap-3 w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                >
+                  <Trash2 size={16} /> Delete Selected
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-500 border-b">
+            <tr>
+              <th className="px-6 py-3 w-8">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === profiles.length && profiles.length > 0}
+                  onChange={toggleSelectAll}
+                  className="rounded border-gray-300"
+                />
+              </th>
+              <th className="px-6 py-3">Name</th>
+              <th className="px-6 py-3">Price</th>
+              <th className="px-6 py-3">Pool Name</th>
+              <th className="px-6 py-3">Download Speed</th>
+              <th className="px-6 py-3">Upload Speed</th>
+              <th className="px-6 py-3">Type</th>
+              <th className="px-6 py-3">Expiry Time</th>
+              <th className="px-6 py-3">Users</th>
+              <th className="px-6 py-3">Online Users</th>
+              <th className="px-6 py-3 text-center">Policies</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {profiles.map((p) => (
+              <tr
+                key={p.id}
+                className="hover:bg-gray-50 cursor-pointer"
+                onDoubleClick={() => handleRowDoubleClick(p)}
+              >
+                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(p.id)}
+                    onChange={() => toggleSelect(p.id)}
+                    className="rounded border-gray-300"
+                  />
+                </td>
+                <td className="px-6 py-4 font-medium">{p.name}</td>
+                <td className="px-6 py-4">{p.price} AFN</td>
+                <td className="px-6 py-4">-</td>
+                <td className="px-6 py-4">{p.downloadSpeed || 0} Kbps</td>
+                <td className="px-6 py-4">{p.uploadSpeed || 0} Kbps</td>
+                <td className="px-6 py-4">{p.profile_type || 'prepaid'}</td>
+                <td className="px-6 py-4">
+                  {p.limit_expiration_value ? `${p.limit_expiration_value} ${p.limit_expiration_unit}` : '-'}
+                </td>
+                <td className="px-6 py-4">0</td>
+                <td className="px-6 py-4">0</td>
+                <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => router.push(`/profiles/${p.id}/policies`)}
+                    className="text-indigo-600 hover:text-indigo-800"
+                    title="Daily Policies"
+                  >
+                    <Clock size={18} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Profile Form Component (بدون تب FUP، با Daily Total Limit به عنوان سهمیه روزانه) ----------
+function ProfileForm({ profile, allProfiles, onCancel, onSave }: any) {
+  const router = useRouter();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const formData = new FormData(form);
+    const data: any = {};
+
+    formData.forEach((value, key) => {
+      if (value === 'on') data[key] = true;
+      else if (value === '') data[key] = null;
+      else data[key] = value;
+    });
+
+    const numberFields = [
+      'price', 'downloadSpeed', 'uploadSpeed', 'totalTraffic', 'validityDays', 'vat',
+      'limit_expiration_value', 'limit_uptime_value', 'limit_download_mb', 'limit_upload_mb', 'limit_traffic_mb',
+      'daily_download_limit_mb', 'daily_traffic_limit_mb', 'daily_total_limit_mb', 'daily_uptime_minutes',
+    ];
+    numberFields.forEach(f => { if (data[f] !== undefined && data[f] !== '') data[f] = Number(data[f]); });
+
+    data.enabled = data.enabled === 'on';
+    data.available_in_user_panel = data.available_in_user_panel === 'on';
+    data.profile_type = data.profile_type || 'prepaid';
+
+    onSave(data);
+  };
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen text-gray-800">
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-2 bg-white border px-3 py-2 rounded-lg shadow-sm"
+        >
+          <ArrowLeft size={16} /> Back to Profiles
+        </button>
+        <h1 className="text-2xl font-bold">{profile ? 'Edit Profile' : 'New Profile'}</h1>
+        {profile?.id && (
+          <button
+            onClick={() => router.push(`/profiles/${profile.id}/policies`)}
+            className="flex items-center gap-2 bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg border border-indigo-200 hover:bg-indigo-200 ml-auto"
+          >
+            <Clock size={16} /> Daily Policies
+          </button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border p-6 max-w-4xl">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Basic Information */}
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label className="block font-medium">Profile Name *</label><input name="name" defaultValue={profile?.name || ''} required className="w-full border rounded-md p-2" /></div>
+              <div><label className="block font-medium">Enabled</label><input name="enabled" type="checkbox" defaultChecked={profile?.enabled !== false} className="mt-2" /></div>
+              <div><label>Unit Price ($)</label><input name="price" type="number" step="0.01" defaultValue={profile?.price || 0} className="w-full border rounded-md p-2" /></div>
+              <div><label>Available in User Panel</label><input name="available_in_user_panel" type="checkbox" defaultChecked={profile?.available_in_user_panel === true} className="mt-2" /></div>
+              <div><label>Download Rate (kbps)</label><input name="downloadSpeed" type="number" defaultValue={profile?.downloadSpeed || 0} className="w-full border rounded-md p-2" /></div>
+              <div><label>Upload Rate (kbps)</label><input name="uploadSpeed" type="number" defaultValue={profile?.uploadSpeed || 0} className="w-full border rounded-md p-2" /></div>
+              <div><label>Type</label><select name="profile_type" defaultValue={profile?.profile_type || 'prepaid'} className="w-full border rounded-md p-2"><option value="prepaid">Prepaid</option><option value="postpaid">Postpaid</option><option value="fup">FUP</option></select></div>
+              <div><label>VAT (%)</label><input name="vat" type="number" step="0.01" defaultValue={profile?.vat || 0} className="w-full border rounded-md p-2" /></div>
+              <div className="md:col-span-2"><label>Short Description</label><textarea name="short_description" defaultValue={profile?.short_description || ''} className="w-full border rounded-md p-2" rows={2} /></div>
+              <div><label>Total Traffic (MB)</label><input name="totalTraffic" type="number" defaultValue={profile?.totalTraffic || ''} className="w-full border rounded-md p-2" /></div>
+              <div><label>Validity (Days)</label><input name="validityDays" type="number" defaultValue={profile?.validityDays || 30} className="w-full border rounded-md p-2" /></div>
+              <div>
+                <label>Expired Next Profile</label>
+                <select name="expired_next_profile" defaultValue={profile?.expired_next_profile || ''} className="w-full border rounded-md p-2">
+                  <option value="">None</option>
+                  {allProfiles?.filter((p: any) => p.id !== profile?.id).map((p: any) => (<option key={p.id} value={p.name}>{p.name}</option>))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Service Limits */}
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Service Limits</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label>Limit Expiration</label><input name="limit_expiration_value" type="number" defaultValue={profile?.limit_expiration_value || ''} className="w-full border rounded-md p-2 mb-1" /><select name="limit_expiration_unit" defaultValue={profile?.limit_expiration_unit || 'days'} className="w-full border rounded-md p-2"><option value="days">days</option><option value="minutes">minutes</option></select></div>
+              <div><label>Limit Uptime (minutes)</label><input name="limit_uptime_value" type="number" defaultValue={profile?.limit_uptime_value || ''} className="w-full border rounded-md p-2" /></div>
+              <div><label>Limit Download (MB)</label><input name="limit_download_mb" type="number" defaultValue={profile?.limit_download_mb || ''} className="w-full border rounded-md p-2" /></div>
+              <div><label>Limit Upload (MB)</label><input name="limit_upload_mb" type="number" defaultValue={profile?.limit_upload_mb || ''} className="w-full border rounded-md p-2" /></div>
+              <div><label>Limit Traffic (MB)</label><input name="limit_traffic_mb" type="number" defaultValue={profile?.limit_traffic_mb || ''} className="w-full border rounded-md p-2" /></div>
+            </div>
+          </div>
+
+          {/* Daily Limits (with Daily Total Limit as quota and Daily Limit Next Profile) */}
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Daily Limits</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label>Daily Download Limit (MB)</label><input name="daily_download_limit_mb" type="number" defaultValue={profile?.daily_download_limit_mb || ''} className="w-full border rounded-md p-2" /></div>
+              <div><label>Daily Upload Limit (MB)</label><input name="daily_upload_limit_mb" type="number" defaultValue={profile?.daily_upload_limit_mb || ''} className="w-full border rounded-md p-2" /></div>
+              <div><label>Daily Total Limit (MB) - High-Speed Quota</label><input name="daily_total_limit_mb" type="number" defaultValue={profile?.daily_total_limit_mb || ''} className="w-full border rounded-md p-2" /><p className="text-xs text-gray-500">Users will have high speed until this daily traffic limit is reached.</p></div>
+              <div><label>Daily Uptime (minutes)</label><input name="daily_uptime_minutes" type="number" defaultValue={profile?.daily_uptime_minutes || ''} className="w-full border rounded-md p-2" /></div>
+              <div className="md:col-span-2">
+                <label>Daily Limit Next Profile (FUP Fallback)</label>
+                <select name="daily_limit_next_profile" defaultValue={profile?.daily_limit_next_profile || ''} className="w-full border rounded-md p-2">
+                  <option value="">None</option>
+                  {allProfiles?.filter((p: any) => p.id !== profile?.id).map((p: any) => (<option key={p.id} value={p.name}>{p.name}</option>))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Profile to switch after daily total limit is exceeded.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button type="button" onClick={onCancel} className="px-4 py-2 border rounded-md">Cancel</button>
+            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">Save Profile</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
